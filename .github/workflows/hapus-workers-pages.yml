@@ -10,19 +10,39 @@
           echo "Mulai proses penghapusan semua Workers, Deployments, dan Pages di Cloudflare..."
           echo
 
-          # === Hapus Workers Routes ===
-          echo "📌 Mengambil daftar Workers Routes..."
-          ROUTES=$(curl -s -X GET "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/workers/filters" \
-            -H "$HEADER_AUTH" -H "$HEADER_CT" | jq -r '.result[]?.id')
+          # === Ambil Zone ID ===
+          echo "📌 Mengambil daftar Zone ID..."
+          ZONES=$(curl -s -X GET "$CLOUDFLARE_API/zones" \
+            -H "$HEADER_AUTH" -H "$HEADER_CT" | jq -r '.result[] | {id, name} | @base64')
 
-          if [ -z "$ROUTES" ] || [ "$ROUTES" = "null" ]; then
-            echo "✅ Tidak ada Routes yang ditemukan."
+          if [ -z "$ZONES" ]; then
+            echo "✅ Tidak ada Zone yang ditemukan."
           else
-            echo "🚨 Menghapus Routes..."
-            for route in $ROUTES; do
-              curl -s -X DELETE "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/workers/filters/$route" \
-                -H "$HEADER_AUTH" -H "$HEADER_CT"
-              echo "🗑️ Route '$route' dihapus."
+            echo "🔍 Ditemukan $(echo "$ZONES" | wc -l) Zone(s)"
+            for zone in $ZONES; do
+              _jq() {
+                echo "$zone" | base64 --decode | jq -r "$1"
+              }
+              ZONE_ID=$(_jq '.id')
+              ZONE_NAME=$(_jq '.name')
+
+              echo "📌 Memproses Zone: $ZONE_NAME ($ZONE_ID)"
+
+              # === Hapus Workers Routes ===
+              echo "📌 Mengambil daftar Workers Routes di Zone: $ZONE_NAME..."
+              ROUTES=$(curl -s -X GET "$CLOUDFLARE_API/zones/$ZONE_ID/workers/routes" \
+                -H "$HEADER_AUTH" -H "$HEADER_CT" | jq -r '.result[]?.id')
+
+              if [ -z "$ROUTES" ] || [ "$ROUTES" = "null" ]; then
+                echo "✅ Tidak ada Routes yang ditemukan di Zone: $ZONE_NAME."
+              else
+                echo "🚨 Menghapus Routes di Zone: $ZONE_NAME..."
+                for route in $ROUTES; do
+                  curl -s -X DELETE "$CLOUDFLARE_API/zones/$ZONE_ID/workers/routes/$route" \
+                    -H "$HEADER_AUTH" -H "$HEADER_CT"
+                  echo "🗑️ Route '$route' dihapus dari Zone: $ZONE_NAME."
+                done
+              fi
             done
           fi
 
