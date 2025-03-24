@@ -1,4 +1,4 @@
-name: Hapus Semua Workers, Deployments, dan Pages
+name: 😆Hapus Semua Workers, Deployments, dan Pages
 
 on:
   workflow_dispatch:
