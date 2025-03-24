@@ -1,7 +1,7 @@
 name: Hapus Semua Workers dan Pages
 
 on:
-  workflow_dispatch: # Bisa dijalankan manual
+  workflow_dispatch:
 
 jobs:
   hapus-cloudflare:
@@ -20,13 +20,27 @@ jobs:
           API_TOKEN="${{ secrets.CF_API_TOKEN }}"
           ACCOUNT_ID="${{ secrets.CF_ACCOUNT_ID }}"
           CLOUDFLARE_API="https://api.cloudflare.com/client/v4"
-
-          # === Header API ===
           HEADER_AUTH="Authorization: Bearer $API_TOKEN"
           HEADER_CT="Content-Type: application/json"
 
           echo "Mulai proses penghapusan semua Workers dan Pages di Cloudflare..."
           echo
+
+          # === Hapus Workers Routes ===
+          echo "📌 Mengambil daftar Workers Routes..."
+          ROUTES=$(curl -s -X GET "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/workers/filters" \
+            -H "$HEADER_AUTH" -H "$HEADER_CT" | jq -r '.result[] | .id')
+
+          if [ -z "$ROUTES" ]; then
+            echo "✅ Tidak ada Routes yang ditemukan."
+          else
+            echo "🚨 Menghapus Routes..."
+            for route in $ROUTES; do
+              curl -s -X DELETE "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/workers/filters/$route" \
+                -H "$HEADER_AUTH" -H "$HEADER_CT"
+              echo "🗑️ Route '$route' dihapus."
+            done
+          fi
 
           # === Hapus Semua Workers ===
           echo "📌 Mengambil daftar Workers..."
@@ -58,9 +72,19 @@ jobs:
               curl -s -X DELETE "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/pages/projects/$project" \
                 -H "$HEADER_AUTH" -H "$HEADER_CT"
               echo "🗑️ Pages Project '$project' dihapus."
+
+              # Konfirmasi Hapus
+              STATUS=$(curl -s -X GET "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/pages/projects/$project" \
+                -H "$HEADER_AUTH" -H "$HEADER_CT" | jq -r '.success')
+              
+              if [ "$STATUS" == "false" ]; then
+                echo "✅ Project '$project' berhasil dihapus."
+              else
+                echo "⚠️ Gagal menghapus project '$project'."
+              fi
             done
           fi
 
           echo
-          echo "🎉 Semua Workers dan Pages Projects berhasil dihapus!"
+          echo "🎉 Semua Workers dan Pages Projects berhasil diproses!"
 
