@@ -1,4 +1,4 @@
-name: Hapus Semua Workers dan Pages
+name: Hapus Semua Workers, Deployments, dan Pages
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ jobs:
       - name: Install jq
         run: sudo apt-get install jq -y
 
-      - name: Hapus Semua Workers dan Pages
+      - name: Hapus Semua Workers, Deployments, dan Pages
         run: |
           # === Konfigurasi ===
           API_TOKEN="${{ secrets.CF_API_TOKEN }}"
@@ -23,7 +23,7 @@ jobs:
           HEADER_AUTH="Authorization: Bearer $API_TOKEN"
           HEADER_CT="Content-Type: application/json"
 
-          echo "Mulai proses penghapusan semua Workers dan Pages di Cloudflare..."
+          echo "Mulai proses penghapusan semua Workers, Deployments, dan Pages di Cloudflare..."
           echo
 
           # === Hapus Workers Routes ===
@@ -58,7 +58,7 @@ jobs:
             done
           fi
 
-          # === Hapus Semua Pages Projects ===
+          # === Hapus Semua Pages Projects (termasuk Deployment) ===
           echo
           echo "📌 Mengambil daftar Pages Projects..."
           PAGES=$(curl -s -X GET "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/pages/projects" \
@@ -69,22 +69,42 @@ jobs:
           else
             echo "🚨 Menghapus Pages Projects..."
             for project in $PAGES; do
+              echo "🔍 Memproses Project: $project"
+
+              # === Hapus Semua Deployments ===
+              echo "📌 Mengambil daftar Deployments untuk Project: $project..."
+              DEPLOYMENTS=$(curl -s -X GET "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/pages/projects/$project/deployments" \
+                -H "$HEADER_AUTH" -H "$HEADER_CT" | jq -r '.result[].id')
+
+              if [ -z "$DEPLOYMENTS" ]; then
+                echo "✅ Tidak ada Deployment untuk Project: $project."
+              else
+                echo "🚨 Menghapus Semua Deployments untuk Project: $project..."
+                for deployment in $DEPLOYMENTS; do
+                  curl -s -X DELETE "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/pages/projects/$project/deployments/$deployment" \
+                    -H "$HEADER_AUTH" -H "$HEADER_CT"
+                  echo "🗑️ Deployment '$deployment' dihapus dari Project: $project."
+                done
+              fi
+
+              # === Hapus Pages Project ===
+              echo "🗑️ Menghapus Project: $project..."
               curl -s -X DELETE "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/pages/projects/$project" \
                 -H "$HEADER_AUTH" -H "$HEADER_CT"
-              echo "🗑️ Pages Project '$project' dihapus."
-
+              
               # Konfirmasi Hapus
               STATUS=$(curl -s -X GET "$CLOUDFLARE_API/accounts/$ACCOUNT_ID/pages/projects/$project" \
                 -H "$HEADER_AUTH" -H "$HEADER_CT" | jq -r '.success')
-              
+
               if [ "$STATUS" == "false" ]; then
                 echo "✅ Project '$project' berhasil dihapus."
               else
-                echo "⚠️ Gagal menghapus project '$project'."
+                echo "⚠️ Gagal menghapus Project '$project'."
               fi
+
             done
           fi
 
           echo
-          echo "🎉 Semua Workers dan Pages Projects berhasil diproses!"
+          echo "🎉 Semua Workers, Deployments, dan Pages Projects berhasil diproses!"
 
